@@ -1,0 +1,7 @@
+torch
+torchvision
+diffusers
+vector-quantize-pytorch==1.31.6
+lpips
+torchmetrics
+pytest
