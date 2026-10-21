@@ -1,14 +1,18 @@
 # DiscreteTokenizer
 
 A small discrete image tokenizer for CelebA faces at 64×64. **Only the encoder is trained.** The decoder is a
-frozen, pretrained decoder borrowed from Stable Diffusion's VAE (see [Citations](#citations)).
+frozen, pretrained **VQ-VAE** decoder: the VQ-f4 autoencoder released with Latent Diffusion and trained on
+CelebA-HQ faces (see [Citations](#citations)).
 
 ```
-x (3×64×64) ─► Encoder ─► 8×8×64 ─► Quantizer ─► 64 tokens ─► 1×1 conv ─► 8×8×4 ─► frozen SD-VAE decoder ─► x̂
-              [trained]            [trained]                  [trained]           [pretrained, not trained]
+x (3×64×64) ─► Encoder ─► 16×16×64 ─► Quantizer ─► 256 tokens ─► 1×1 conv ─► 16×16×3 ─► frozen VQ-VAE decoder ─► x̂
+              [trained]              [trained]                    [trained]             [pretrained, not trained]
 ```
 
-**Question:** at a fixed budget of about 640 bits per image (64 tokens × ~10 bits), how do four quantizers
+Our own quantizer produces the tokens. The pretrained VQ-VAE's codebook is skipped (`force_not_quantize=True`), and only
+its decoder is used.
+
+**Question:** at a fixed budget of about 2,560 bits per image (256 tokens × ~10 bits), how do four quantizers
 trade off codebook usage against reconstruction quality?
 
 | Variant | Quantizer | Codes |
@@ -46,7 +50,7 @@ Every variant uses the same data, steps, seed, encoder, decoder and bit budget. 
 **Training loss:**
 
 - **reconstruction through the frozen decoder:** `L1(x̂, x) + 1.0 · LPIPS(x̂, x)`
-- **latent matching:** `1.0 · MSE(latent, teacher latent)`. The teacher latent is the pretrained SD-VAE encoder's latent mean. It tells our encoder roughly where the decoder expects its inputs, which speeds training up a lot. Set `--latent-weight 0` to train from reconstruction alone.
+- **latent matching:** `1.0 · MSE(latent, teacher latent)`. The teacher latent is the pretrained VQ-VAE encoder's pre-quantization latent. It tells our encoder roughly where the decoder expects its inputs, which speeds training up a lot. Set `--latent-weight 0` to train from reconstruction alone.
 - **quantizer loss:** codebook and commitment terms with β = 0.25. FSQ has none.
 
 `runs/<variant>/log.jsonl` records every loss term every 200 steps, along with codebook usage, perplexity and dead
@@ -58,18 +62,19 @@ codes (codes unused for 1000 steps).
 
 ```
 tok/data.py        CelebA loader (64×64, [-1, 1])
-tok/model.py       encoder + quantizer + projection in front of the frozen decoder
+tok/model.py       encoder (×4 downsampling) + quantizer + projection in front of the frozen decoder
 tok/quantizers.py  variants A–D behind one interface
-tok/decoder.py     the borrowed pretrained decoder (frozen)
+tok/decoder.py     the borrowed pretrained VQ-VAE decoder (frozen)
 tok/metrics.py     usage, perplexity, dead codes, PSNR
 train.py, evaluate.py, tests/test_core.py
 ```
 
 ## Citations
 
-**Decoder (pretrained, used frozen).** The decoder of the Stable Diffusion VAE, fine-tuned with an MSE-weighted
-loss: [`stabilityai/sd-vae-ft-mse`](https://huggingface.co/stabilityai/sd-vae-ft-mse) (MIT license), loaded with
-[🤗 Diffusers](https://github.com/huggingface/diffusers).
+**Decoder (pretrained, used frozen).** The decoder of the VQ-regularized autoencoder (VQ-f4, 8192 codes) from
+[`CompVis/ldm-celebahq-256`](https://huggingface.co/CompVis/ldm-celebahq-256) (subfolder `vqvae`), trained on
+CelebA-HQ and loaded with [🤗 Diffusers](https://github.com/huggingface/diffusers). Its architecture follows VQGAN
+(Esser et al., 2021).
 
 ```bibtex
 @inproceedings{rombach2022ldm,
@@ -79,9 +84,17 @@ loss: [`stabilityai/sd-vae-ft-mse`](https://huggingface.co/stabilityai/sd-vae-ft
   pages     = {10684--10695},
   year      = {2022}
 }
+
+@inproceedings{esser2021taming,
+  title     = {Taming Transformers for High-Resolution Image Synthesis},
+  author    = {Esser, Patrick and Rombach, Robin and Ommer, Bj{\"o}rn},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {12873--12883},
+  year      = {2021}
+}
 ```
 
-**Dataset.**
+**Dataset.** CelebA, with CelebA-HQ (Karras et al., *Progressive Growing of GANs*, ICLR 2018) for the decoder's pretraining.
 
 ```bibtex
 @inproceedings{liu2015celeba,

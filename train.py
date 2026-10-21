@@ -1,4 +1,4 @@
-"""Train the encoder + quantizer in front of the frozen pretrained decoder.
+"""Train the encoder + quantizer in front of the frozen pretrained VQ-VAE decoder.
 
     python train.py --variant B
     python train.py --variant A --steps 2000 --smoke     # random data + random decoder, no downloads
@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from tok.data import RandomImages, celeba
-from tok.decoder import PretrainedDecoder, random_vae
+from tok.decoder import PretrainedDecoder, random_vqvae
 from tok.metrics import CodeStats
 from tok.model import Tokenizer
 
@@ -28,7 +28,7 @@ def parse():
     ap = argparse.ArgumentParser()
     ap.add_argument("--variant", default="B", choices=list("ABCD"))
     ap.add_argument("--steps", type=int, default=30000)
-    ap.add_argument("--batch-size", type=int, default=64)  # 64 x 64 positions >= 1024 codes for k-means init
+    ap.add_argument("--batch-size", type=int, default=64)  # 64 x 256 positions >= 1024 codes for k-means init
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--latent-weight", type=float, default=1.0)
     ap.add_argument("--lpips-weight", type=float, default=1.0)
@@ -55,7 +55,7 @@ def main():
                         num_workers=0 if args.smoke else args.num_workers,
                         generator=torch.Generator().manual_seed(args.seed))
 
-    decoder = PretrainedDecoder(random_vae() if args.smoke else None)
+    decoder = PretrainedDecoder(random_vqvae() if args.smoke else None)
     model = Tokenizer(decoder, args.variant).to(device)
     lpips_fn = None
     if args.lpips_weight > 0:

@@ -1,7 +1,7 @@
-"""The tokenizer: our trainable encoder + quantizer, then the frozen pretrained decoder.
+"""The tokenizer: our trainable encoder + quantizer, then the frozen pretrained VQ-VAE decoder.
 
-x (B,3,64,64) -> Encoder -> (B,64,8,8) -> 64 vectors -> Quantizer -> tokens (B,64)
-  -> 1x1 conv to 4 channels -> frozen SD-VAE decoder -> x_hat (B,3,64,64)
+x (B,3,64,64) -> Encoder -> (B,64,16,16) -> 256 vectors -> Quantizer -> tokens (B,256)
+  -> 1x1 conv to 3 channels -> frozen VQ-f4 decoder -> x_hat (B,3,64,64)
 """
 from torch import nn
 
@@ -18,14 +18,13 @@ class ResBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    """64x64 -> 8x8 (three stride-2 convs)."""
+    """Downsample by 4 (two stride-2 convs) to match the VQ-f4 decoder: 64x64 -> 16x16."""
 
     def __init__(self, latent_dim=64):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(3, 64, 4, 2, 1), nn.ReLU(),
-            nn.Conv2d(64, 128, 4, 2, 1), nn.ReLU(),
-            nn.Conv2d(128, 256, 4, 2, 1),
+            nn.Conv2d(64, 256, 4, 2, 1),
             ResBlock(256), ResBlock(256), nn.ReLU(),
             nn.Conv2d(256, latent_dim, 1),
         )
@@ -58,4 +57,4 @@ class Tokenizer(nn.Module):
         return [p for n, p in self.named_parameters() if not n.startswith("decoder.")]
 
     def bits_per_image(self, image_size=64):
-        return (image_size // 8) ** 2 * self.quantizer.bits
+        return (image_size // self.decoder.downsample) ** 2 * self.quantizer.bits

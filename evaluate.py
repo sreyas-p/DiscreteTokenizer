@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
 from tok.data import RandomImages, celeba
-from tok.decoder import PretrainedDecoder, random_vae
+from tok.decoder import PretrainedDecoder, random_vqvae
 from tok.metrics import CodeStats, psnr
 from tok.model import Tokenizer
 
@@ -36,7 +36,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ck = torch.load(args.ckpt, map_location=device)
-    decoder = PretrainedDecoder(random_vae() if ck["smoke"] else None)
+    decoder = PretrainedDecoder(random_vqvae() if ck["smoke"] else None)
     model = Tokenizer(decoder, ck["variant"]).to(device).eval()
     model.load_state_dict(ck["model"], strict=False)  # decoder weights come from the hub, not the checkpoint
 

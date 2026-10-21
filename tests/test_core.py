@@ -2,7 +2,7 @@
 import pytest
 import torch
 
-from tok.decoder import PretrainedDecoder, random_vae
+from tok.decoder import PretrainedDecoder, random_vqvae
 from tok.metrics import CodeStats
 from tok.model import Tokenizer
 from tok.quantizers import Quantizer, VectorQuantizer
@@ -10,7 +10,7 @@ from tok.quantizers import Quantizer, VectorQuantizer
 
 @pytest.fixture(scope="module")
 def decoder():
-    return PretrainedDecoder(random_vae())
+    return PretrainedDecoder(random_vqvae())
 
 
 def test_vq_nearest_code_loss_and_straight_through():
@@ -32,8 +32,8 @@ def test_shapes_bits_and_only_encoder_trains(decoder, variant):
     model = Tokenizer(decoder, variant)
     x = torch.rand(4, 3, 64, 64) * 2 - 1
     x_hat, latent, idx, aux = model(x)
-    assert x_hat.shape == x.shape and latent.shape == (4, 4, 8, 8) and idx.shape == (4, 64)
-    assert abs(model.bits_per_image() - 640) < 3  # FSQ: 1000 codes = 637.8 bits
+    assert x_hat.shape == x.shape and latent.shape == (4, 3, 16, 16) and idx.shape == (4, 256)
+    assert abs(model.bits_per_image() - 2560) < 10  # 256 tokens x 10 bits; FSQ: 1000 codes = 2551 bits
     (x_hat.mean() + aux).backward()
     assert all(p.grad is None for p in model.decoder.parameters())          # frozen
     assert model.encoder.net[0].weight.grad.abs().sum() > 0                 # trained through the decoder
@@ -42,7 +42,7 @@ def test_shapes_bits_and_only_encoder_trains(decoder, variant):
 
 def test_decoder_stays_in_eval_mode(decoder):
     model = Tokenizer(decoder, "D").train()
-    assert not model.decoder.vae.training and model.encoder.training
+    assert not model.decoder.vqvae.training and model.encoder.training
 
 
 def test_quantizer_runs_fp32_under_autocast():
