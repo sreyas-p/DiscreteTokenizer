@@ -227,3 +227,4 @@ results/
 wandb/
 *.pt
 *.ckpt
+demo_out/
