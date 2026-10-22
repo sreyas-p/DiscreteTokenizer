@@ -2,12 +2,13 @@
 
     python demo.py                 # no downloads: random images + random-weight copy of the decoder
     python demo.py --real          # pretrained VQ-VAE decoder + CelebA test images from data/celeba
+    python demo.py --show          # also open the image grid at the end
 
 1. Tokenize: one image becomes a 16x16 grid of discrete token ids (~2,560 bits).
 2. Collapse race: train the encoder + each quantizer (A, B, C, D) side by side and watch codebook usage.
    For speed, the frozen VQ-VAE's latents are computed once and the encoder is trained to match them
    (the latent-matching term of train.py's loss). The 33M-parameter decoder runs only at the end.
-3. Saves demo_out/recon.png: originals (top row), then one row per quantizer.
+3. Saves demo_out/recon.png: originals (top row), then one row per quantizer. --show opens it.
 """
 import argparse
 import sys
@@ -51,6 +52,7 @@ def main():
     ap.add_argument("--images", type=int, default=64)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default="demo_out")
+    ap.add_argument("--show", action="store_true", help="open the image grid in the default image viewer")
     args = ap.parse_args()
     torch.manual_seed(0)
 
@@ -110,10 +112,19 @@ def main():
     with torch.no_grad():
         for model, *_ in results.values():
             rows.append(model(x[:8])[0])
-    save_image((torch.cat(rows) + 1) / 2, out / "recon.png", nrow=8)
-    print(f"\n   reconstructions saved to {out / 'recon.png'} (top: originals, then {', '.join(results)})")
+    grid = F.interpolate((torch.cat(rows) + 1) / 2, scale_factor=4, mode="nearest")  # 4x: readable on a projector
+    save_image(grid, out / "recon.png", nrow=8, padding=8, pad_value=1.0)
+    print(f"\n   reconstructions saved to {out / 'recon.png'}")
+    print(f"   rows: originals, then {', '.join(f'{v} ({NAMES[v]})' for v in results)}")
     if not args.real:
-        print("   (random decoder weights: images are noise; run with --real for faces)")
+        print("   (random images + random decoder weights: reconstructions are noise; run with --real for faces)")
+    if args.show:
+        from PIL import Image
+
+        try:
+            Image.open(out / "recon.png").show()
+        except Exception as e:
+            print(f"   could not open an image viewer ({e}); open {out / 'recon.png'} manually")
 
 
 if __name__ == "__main__":
