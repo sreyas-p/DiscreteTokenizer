@@ -18,7 +18,7 @@ its decoder is used.
 
 ## Project plan
 
-Models ‌like ‌VQGAN-transformers, ‌MaskGIT and Parti don't operate on pixels, they first tokenize each image into a short grid of discrete codes (similar to how words are tokens to a NLP language model). Tokenizers can be difficult to train, often suffering from codebook collapse where a few codes are used while the rest remain unused, wasting bits, resulting in blurry reconstructions. Multiple attempts have been made to fix this problem, but they are rarely benchmarked fairly. This project benchmarks them head-to-head on Celebrity images. A baseline VQ model (no fix), EMA with k-means initialization and dead code restarts, low-dimensional cosine codes, and FSQ. All ablations use the same image encoder, same frozen pretrained VQ-VAE decoder, same data and random seed, and same total number of bits (around 2560 per image). Using a frozen pretrained decoder decoder makes this project small and fair: only a ~1.6M encoder needs to be trained, any difference in results is due to the quantizer, and the decoder can be freely swapped out. For each model variant you will get a trained checkpoint, a row in `results/results.csv` (codebook usage, perplexity, number of dead codes, PSNR, SSIM, LPIPS), a grid of reconstructions, and a short answer to the question of which fix offers the best usage/quality balance. Potential future extensions include adding more model variants (LFQ, SimVQ), larger images, and training a small transformer to generate new faces.
+Models ‌like ‌VQGAN-Transformers, ‌MaskGIT, Parti don't take in pixels. They first tokenize each image into a short grid of discrete codes (like how words are tokens to an NLP language model). Tokenizers are hard to train. They often get ``codebook collapse'', where only a few codes are used and the rest are dead, wasting bits, and the reconstructions are blurry. Several attempts have been made to fix this issue. They are rarely compared fairly. This project compares them all head-to-head on Celebrity images. Baseline VQ model (no fix), EMA with k-means init and dead code restarts, low-dimensional cosine codes, FSQ. All ablations have same image encoder, same frozen pretrained VQ-VAE decoder, same data, same random seed, and same number of bits (around 2560 per image). A frozen pretrained decoder makes this project small and fair. Only ~1.6M encoder needs to be trained. Any difference in results is due to the quantizer. The decoder can be freely changed. For each model you will have a trained checkpoint, a row in results/results.csv (codebook usage, perplexity, number of dead codes, PSNR, SSIM, LPIPS), a grid of reconstructions, and an answer to the question of which fix provides the best usage/quality trade-off. Future extensions could include adding more models (LFQ, SimVQ), bigger images, and training a small transformer to generate new faces.
 
 ## User roles
 
@@ -84,6 +84,8 @@ and terms. CelebA is available for non-commercial research purposes only.
 ## Setup
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python -m pytest tests -q          # CPU, no downloads
 ```
@@ -102,6 +104,9 @@ python evaluate.py --ckpt runs/B/last.pt    # adds a row to results/results.csv 
 for v in A B C D; do python train.py --variant $v && python evaluate.py --ckpt runs/$v/last.pt; done
 
 python train.py --variant A --smoke --steps 50 --lpips-weight 0   # pipeline check: random data + random decoder
+
+python demo.py          # live demo (~1 min on CPU): codebook usage of A vs B
+python demo.py --show   # same, then opens the reconstruction grid
 ```
 
 Every variant uses the same data, steps, seed, encoder, decoder and bit budget. Only the quantizer changes.
@@ -114,6 +119,7 @@ tok/model.py       encoder (×4 downsampling) + quantizer + projection in front 
 tok/quantizers.py  variants A–D behind one interface
 tok/decoder.py     the borrowed pretrained VQ-VAE decoder (frozen)
 tok/metrics.py     usage, perplexity, dead codes, PSNR
+demo.py            live demo of codebook collapse
 train.py, evaluate.py, tests/test_core.py
 ```
 
