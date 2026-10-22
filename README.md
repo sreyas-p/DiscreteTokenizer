@@ -1,5 +1,9 @@
 # DiscreteTokenizer
 
+**Software product:** a command-line research toolkit that trains and evaluates discrete image tokenizers.
+**Tech stack:** Python 3.10+, PyTorch, torchvision, 🤗 Diffusers (pretrained VQ-VAE decoder), vector-quantize-pytorch,
+LPIPS, TorchMetrics and pytest. Training runs on a CUDA GPU, and CPU works for tests and smoke runs. 
+
 A small discrete image tokenizer for CelebA faces at 64×64. **Only the encoder is trained.** The decoder is a
 frozen, pretrained **VQ-VAE** decoder: the VQ-f4 autoencoder released with Latent Diffusion and trained on
 CelebA-HQ faces (see [Citations](#citations)).
@@ -12,15 +16,81 @@ x (3×64×64) ─► Encoder ─► 16×16×64 ─► Quantizer ─► 256 token
 Our own quantizer produces the tokens. The pretrained VQ-VAE's codebook is skipped (`force_not_quantize=True`), and only
 its decoder is used.
 
-**Question:** at a fixed budget of about 2,560 bits per image (256 tokens × ~10 bits), how do four quantizers
-trade off codebook usage against reconstruction quality?
+## Project plan
 
-| Variant | Quantizer | Codes |
+Image generators such as VQGAN-transformers, MaskGIT and Parti don't work on pixels directly. A *tokenizer* first turns
+each image into a short grid of discrete codes, much as words are tokens for a language model. Training these tokenizers
+often goes wrong through codebook collapse: most of the codebook goes unused, so the bits are wasted and
+reconstructions get blurry. Several fixes have been proposed, but they are rarely compared under identical conditions.
+This project compares them head to head on Celebrity faces. A plain VQ baseline, EMA updates with k-means init and dead-code
+restarts, low-dimensional cosine codes, and FSQ each feed the same encoder, the same frozen pretrained VQ-VAE
+decoder, the same data and seed, and the same bit budget of about 2,560 bits per image. Freezing a published
+decoder keeps the project small: only a ~1.6M-parameter encoder is trained, and any difference in results comes from
+the quantizer alone. For each variant the deliverable is a trained checkpoint, a row in `results/results.csv`
+(codebook usage, perplexity, dead codes, PSNR, SSIM, LPIPS), a reconstruction grid, and a short written answer on which
+fix gives the best usage/quality trade-off. Possible extensions: more variants (LFQ, SimVQ), larger images, and
+training a small transformer on the tokens to generate new faces.
+
+## User roles
+
+DiscreteTokenizer is a command-line toolkit, not a hosted web app. There are no accounts, nobody uploads content, and
+nothing is served on the public internet, so moderation and login restrictions (e.g. `@ucsb.edu`) don't apply. It still
+has four kinds of users:
+
+| Role | Goal | How the toolkit supports it |
 |---|---|---|
-| A | plain VQ with a loss-trained codebook (baseline, expected to collapse) | 1024 |
-| B | VQ + EMA + k-means init + dead-code restart | 1024 |
-| C | low-dimensional (8) L2-normalized codes | 1024 |
-| D | FSQ, levels [8, 5, 5, 5] | 1000 |
+| **Researcher / student** (main user) | Find out which collapse fix works best at a fixed bitrate | `train.py --variant {A,B,C,D}` trains one tokenizer, `evaluate.py` adds a comparable row to `results/results.csv`, and `log.jsonl` tracks usage, perplexity and dead codes over training |
+| **Generative-model builder** | Get discrete image tokens for a downstream model (e.g. a transformer that generates faces) | `Tokenizer.tokenize(x)` returns a `16×16` grid of token ids per image, and `Tokenizer(...)(x)` decodes back to pixels with the frozen decoder |
+| **Reader / reviewer** (instructor, TA, classmate) | Check and reproduce the results | One command per run, seed 0 everywhere, and a fixed eval split (first 10k CelebA test images). `pytest` checks the core math on CPU with no downloads, and `--smoke` checks the full pipeline in about a minute |
+| **Contributor** | Add a new quantizer and compare it fairly | Implement the one-method interface in `tok/quantizers.py` (`z → z_q, ids, aux_loss`). The tests check shapes, the bit budget and that the decoder stays frozen |
+
+## Current experience
+
+What the pipeline does:
+
+What a user sees today: this is real output from the built-in smoke test (`--smoke` uses random images and a
+random-weight copy of the decoder, so the numbers only show that the pipeline runs and are not results):
+
+```text
+$ python train.py --variant B --smoke --steps 20 --log-every 10 --lpips-weight 0 --batch-size 16
+variant B: 2560.0 bits/image, 1.59M trainable params, device cpu
+step     10 | loss 0.4813 | usage 1.000 | ppl   288.0 | dead    0
+step     20 | loss 0.4418 | usage 0.177 | ppl    97.4 | dead    0
+saved runs/B/last.pt
+
+$ python evaluate.py --ckpt runs/B/last.pt --eval-size 32 --no-lpips
+{'variant': 'B', 'steps': 20, 'bits_per_image': '2560.0', 'usage': '0.0967', 'perplexity': '54.8', 'psnr': '12.188', 'ssim': '0.1770', 'lpips': ''}
+
+$ cat results/results.csv
+variant,steps,bits_per_image,usage,perplexity,psnr,ssim,lpips
+B,20,2560.0,0.0967,54.8,12.188,0.1770,
+```
+
+Each evaluation also saves `results/recon_<variant>.png`, an 8-image grid with the originals on top and the
+reconstructions below. Status: the code, tests and smoke runs are complete. The full CelebA runs (30k steps per variant)
+need a GPU and haven't been done yet.
+
+## Tech Stack
+
+| Technology | What it's used for | Why this choice |
+|---|---|---|
+| **Python 3.10+** | Everything | The standard language for ML research. Every library below is Python-first |
+| **PyTorch** (+ torchvision) | Encoder, training loop, CelebA loading | Dynamic graphs make straight-through estimators (`z + (z_q - z).detach()`) easy to write and debug. torchvision ships a CelebA loader with the official train/test split |
+| **🤗 Diffusers** | Loads the pretrained VQ-VAE (`VQModel`) | One line downloads a published, peer-reviewed decoder, so we don't train (and justify) our own |
+| **vector-quantize-pytorch** (pinned 1.31.6) | Quantizer variants B–D | Widely used, well-tested implementations of EMA/k-means VQ, cosine codes and FSQ. Pinned because its API changes often. Variant A is written by hand so the core math is visible |
+| **LPIPS** | Perceptual training loss and metric | The standard perceptual metric for tokenizers. It matches human judgement better than pixel error |
+| **TorchMetrics** | SSIM | A tested reference implementation, so we avoid metric bugs |
+| **pytest** | Unit tests | Fast CPU tests for the math (nearest-code lookup, loss, gradient flow) and the fairness rules |
+| **Git + GitHub** | Version control, tagged releases | Reproducibility: each result can be traced to a tagged commit |
+
+We considered and rejected two alternatives. **JAX/Flax** has fewer pretrained tokenizers and VQ libraries. **Training
+our own decoder** (the original plan) would have multiplied compute, and decoder quality would have confounded the
+quantizer comparison.
+
+## License
+
+Code: MIT, see [LICENSE.md](LICENSE.md). The pretrained decoder weights and the CelebA dataset keep their own licenses
+and terms. CelebA is available for non-commercial research purposes only.
 
 ## Setup
 
@@ -46,17 +116,6 @@ python train.py --variant A --smoke --steps 50 --lpips-weight 0   # pipeline che
 ```
 
 Every variant uses the same data, steps, seed, encoder, decoder and bit budget. Only the quantizer changes.
-
-**Training loss:**
-
-- **reconstruction through the frozen decoder:** `L1(x̂, x) + 1.0 · LPIPS(x̂, x)`
-- **latent matching:** `1.0 · MSE(latent, teacher latent)`. The teacher latent is the pretrained VQ-VAE encoder's pre-quantization latent. It tells our encoder roughly where the decoder expects its inputs, which speeds training up a lot. Set `--latent-weight 0` to train from reconstruction alone.
-- **quantizer loss:** codebook and commitment terms with β = 0.25. FSQ has none.
-
-`runs/<variant>/log.jsonl` records every loss term every 200 steps, along with codebook usage, perplexity and dead
-codes (codes unused for 1000 steps).
-
-`results/results.csv` columns: `variant, steps, bits_per_image, usage, perplexity, psnr, ssim, lpips`.
 
 ## Files
 
