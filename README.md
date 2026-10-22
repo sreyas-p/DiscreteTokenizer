@@ -18,18 +18,7 @@ its decoder is used.
 
 ## Project plan
 
-Image generators such as VQGAN-transformers, MaskGIT and Parti don't work on pixels directly. A *tokenizer* first turns
-each image into a short grid of discrete codes, much as words are tokens for a language model. Training these tokenizers
-often goes wrong through codebook collapse: most of the codebook goes unused, so the bits are wasted and
-reconstructions get blurry. Several fixes have been proposed, but they are rarely compared under identical conditions.
-This project compares them head to head on Celebrity faces. A plain VQ baseline, EMA updates with k-means init and dead-code
-restarts, low-dimensional cosine codes, and FSQ each feed the same encoder, the same frozen pretrained VQ-VAE
-decoder, the same data and seed, and the same bit budget of about 2,560 bits per image. Freezing a published
-decoder keeps the project small: only a ~1.6M-parameter encoder is trained, and any difference in results comes from
-the quantizer alone. For each variant the deliverable is a trained checkpoint, a row in `results/results.csv`
-(codebook usage, perplexity, dead codes, PSNR, SSIM, LPIPS), a reconstruction grid, and a short written answer on which
-fix gives the best usage/quality trade-off. Possible extensions: more variants (LFQ, SimVQ), larger images, and
-training a small transformer on the tokens to generate new faces.
+Models ‌like ‌VQGAN-transformers, ‌MaskGIT and Parti don't operate on pixels, they first tokenize each image into a short grid of discrete codes (similar to how words are tokens to a NLP language model). Tokenizers can be difficult to train, often suffering from codebook collapse where a few codes are used while the rest remain unused, wasting bits, resulting in blurry reconstructions. Multiple attempts have been made to fix this problem, but they are rarely benchmarked fairly. This project benchmarks them head-to-head on Celebrity images. A baseline VQ model (no fix), EMA with k-means initialization and dead code restarts, low-dimensional cosine codes, and FSQ. All ablations use the same image encoder, same frozen pretrained VQ-VAE decoder, same data and random seed, and same total number of bits (around 2560 per image). Using a frozen pretrained decoder decoder makes this project small and fair: only a ~1.6M encoder needs to be trained, any difference in results is due to the quantizer, and the decoder can be freely swapped out. For each model variant you will get a trained checkpoint, a row in `results/results.csv` (codebook usage, perplexity, number of dead codes, PSNR, SSIM, LPIPS), a grid of reconstructions, and a short answer to the question of which fix offers the best usage/quality balance. Potential future extensions include adding more model variants (LFQ, SimVQ), larger images, and training a small transformer to generate new faces.
 
 ## User roles
 
