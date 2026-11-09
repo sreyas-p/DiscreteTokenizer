@@ -107,7 +107,8 @@ def main():
             if step % args.save_every == 0 or step == args.steps:
                 # the frozen decoder is not saved; it is reloaded from the hub
                 state = {k: v for k, v in model.state_dict().items() if not k.startswith("decoder.")}
-                torch.save({"model": state, "variant": args.variant, "step": step, "smoke": args.smoke}, out / "last.pt")
+                ckpt = {"model": state, "variant": args.variant, "step": step, "smoke": args.smoke}
+                torch.save(ckpt, out / "last.pt")
             if step >= args.steps:
                 break
     print(f"saved {out / 'last.pt'}")

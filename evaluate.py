@@ -40,7 +40,10 @@ def main():
     model = Tokenizer(decoder, ck["variant"]).to(device).eval()
     model.load_state_dict(ck["model"], strict=False)  # decoder weights come from the hub, not the checkpoint
 
-    data = RandomImages(args.eval_size, seed=1) if ck["smoke"] else celeba(args.data_root, "test", eval_size=args.eval_size)
+    if ck["smoke"]:
+        data = RandomImages(args.eval_size, seed=1)
+    else:
+        data = celeba(args.data_root, "test", eval_size=args.eval_size)
     lpips_fn = None
     if not args.no_lpips:
         import lpips
