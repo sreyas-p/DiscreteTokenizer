@@ -8,7 +8,8 @@
 2. Collapse race: train the encoder + each quantizer (A, B, C, D) side by side and watch codebook usage.
    For speed, the frozen VQ-VAE's latents are computed once and the encoder is trained to match them
    (the latent-matching term of train.py's loss). The 33M-parameter decoder runs only at the end.
-3. Saves demo_out/recon.png: originals (top row), then one row per quantizer. --show opens it.
+3. Saves demo_out/recon.png: originals (top row), then one row per quantizer, and demo_out/tokens.png: each
+   token id drawn in its own color, so a collapsed quantizer shows up as one flat color. --show opens both.
 """
 import argparse
 import sys
@@ -37,6 +38,13 @@ def sparkline(counts, buckets=40):
     c = c[: (len(c) // buckets) * buckets].view(buckets, -1).sum(1)
     c = c / c.max().clamp(min=1)
     return "".join(" ▁▂▃▄▅▆▇█"[int(v * 8)] for v in c)
+
+
+def token_map(ids, num_codes, size=64):
+    """(B, 256) token ids -> (B, 3, size, size) image with one fixed random color per code."""
+    palette = torch.rand(num_codes, 3, generator=torch.Generator().manual_seed(0))
+    img = palette[ids.view(-1, 16, 16)].permute(0, 3, 1, 2)
+    return F.interpolate(img, size=size, mode="nearest")
 
 
 def section(title):
@@ -108,23 +116,29 @@ def main():
     out.mkdir(exist_ok=True)
     from torchvision.utils import save_image
 
-    rows = [x[:8]]
+    rows, token_rows = [x[:8]], [(x[:8] + 1) / 2]
     with torch.no_grad():
         for model, *_ in results.values():
-            rows.append(model(x[:8])[0])
-    grid = F.interpolate((torch.cat(rows) + 1) / 2, scale_factor=4, mode="nearest")  # 4x: readable on a projector
-    save_image(grid, out / "recon.png", nrow=8, padding=8, pad_value=1.0)
-    print(f"\n   reconstructions saved to {out / 'recon.png'}")
+            x_hat, _, ids, _ = model(x[:8])
+            rows.append(x_hat)
+            token_rows.append(token_map(ids, model.quantizer.num_codes))
+    images = {"recon.png": (torch.cat(rows) + 1) / 2, "tokens.png": torch.cat(token_rows)}
+    for name, grid in images.items():
+        grid = F.interpolate(grid, scale_factor=4, mode="nearest")  # 4x: readable on a projector
+        save_image(grid, out / name, nrow=8, padding=8, pad_value=1.0)
+    print(f"\n   reconstructions saved to {out / 'recon.png'}, token maps to {out / 'tokens.png'}")
     print(f"   rows: originals, then {', '.join(f'{v} ({NAMES[v]})' for v in results)}")
+    print("   token maps: one color per code; a single flat color means every patch got the same token")
     if not args.real:
         print("   (random images + random decoder weights: reconstructions are noise; run with --real for faces)")
     if args.show:
         from PIL import Image
 
-        try:
-            Image.open(out / "recon.png").show()
-        except Exception as e:
-            print(f"   could not open an image viewer ({e}); open {out / 'recon.png'} manually")
+        for name in images:
+            try:
+                Image.open(out / name).show()
+            except Exception as e:
+                print(f"   could not open an image viewer ({e}); open {out / name} manually")
 
 
 if __name__ == "__main__":
