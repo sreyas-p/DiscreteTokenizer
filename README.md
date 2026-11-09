@@ -1,5 +1,7 @@
 # DiscreteTokenizer
 
+[![CI](https://github.com/sreyas-p/DiscreteTokenizer/actions/workflows/ci.yml/badge.svg)](https://github.com/sreyas-p/DiscreteTokenizer/actions/workflows/ci.yml)
+
 **Software product:** a command-line research toolkit that trains and evaluates discrete image tokenizers.
 **Tech stack:** Python 3.10+, PyTorch, torchvision, 🤗 Diffusers (pretrained VQ-VAE decoder), vector-quantize-pytorch,
 LPIPS, TorchMetrics and pytest. Training runs on a CUDA GPU, and CPU works for tests and smoke runs. 
@@ -88,6 +90,7 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python -m pytest tests -q          # CPU, no downloads
+ruff check .                       # lint (pip install ruff)
 ```
 
 CelebA goes in `data/celeba/` (torchvision layout: `img_align_celeba/`, `list_eval_partition.txt`, and the other
@@ -106,7 +109,7 @@ for v in A B C D; do python train.py --variant $v && python evaluate.py --ckpt r
 python train.py --variant A --smoke --steps 50 --lpips-weight 0   # pipeline check: random data + random decoder
 
 python demo.py          # live demo (~1 min on CPU): codebook usage of A vs B
-python demo.py --show   # same, then opens the reconstruction grid
+python demo.py --show   # same, then opens the reconstruction grid and token maps
 ```
 
 Every variant uses the same data, steps, seed, encoder, decoder and bit budget. Only the quantizer changes.
@@ -120,6 +123,7 @@ tok/quantizers.py  variants A–D behind one interface
 tok/decoder.py     the borrowed pretrained VQ-VAE decoder (frozen)
 tok/metrics.py     usage, perplexity, dead codes, PSNR
 demo.py            live demo of codebook collapse
+.github/workflows/ci.yml  CI: lint, unit tests and a smoke train + evaluate on every push and pull request
 train.py, evaluate.py, tests/test_core.py
 ```
 

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies (CPU-only PyTorch)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt ruff
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Unit tests
+        run: python -m pytest tests -q
+
+      - name: Smoke train + evaluate (random data, random-weight decoder)
+        run: |
+          python train.py --variant B --smoke --steps 10 --log-every 5 --batch-size 16 --lpips-weight 0 --out runs/ci
+          python evaluate.py --ckpt runs/ci/last.pt --eval-size 16 --no-lpips --results runs/ci_results
+          cat runs/ci_results/results.csv
