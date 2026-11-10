@@ -59,3 +59,30 @@ def test_code_stats():
     s.reset_counts()
     s.update(torch.tensor([2, 2]), step=15)
     assert s.usage() == 0.25 and abs(s.perplexity() - 1) < 1e-6 and s.dead(15) == 3
+
+
+@pytest.mark.parametrize("layout", ["official", "kaggle"])
+def test_celeba_loader_reads_both_download_layouts(tmp_path, layout):
+    from PIL import Image
+
+    from tok.data import celeba
+
+    names = [f"{i:06d}.jpg" for i in range(1, 7)]
+    splits = [0, 0, 0, 1, 2, 2]
+    if layout == "official":
+        root, img_dir = tmp_path, tmp_path / "celeba" / "img_align_celeba"
+        part = tmp_path / "celeba" / "list_eval_partition.txt"
+        text = "".join(f"{n} {s}\n" for n, s in zip(names, splits))
+    else:  # Kaggle: nested image folder, CSV with a header, no "celeba" folder
+        root, img_dir = tmp_path, tmp_path / "img_align_celeba" / "img_align_celeba"
+        part = tmp_path / "list_eval_partition.csv"
+        text = "image_id,partition\n" + "".join(f"{n},{s}\n" for n, s in zip(names, splits))
+    img_dir.mkdir(parents=True)
+    part.write_text(text)
+    for n in names:
+        Image.new("RGB", (178, 218), (200, 100, 50)).save(img_dir / n)
+
+    train, test = celeba(root, "train"), celeba(root, "test", eval_size=1)
+    assert len(train) == 3 and len(test) == 1
+    x = train[0]
+    assert x.shape == (3, 64, 64) and -1 <= x.min() and x.max() <= 1

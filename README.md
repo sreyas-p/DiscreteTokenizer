@@ -93,8 +93,9 @@ python -m pytest tests -q          # CPU, no downloads
 ruff check .                       # lint (pip install ruff)
 ```
 
-CelebA goes in `data/celeba/` (torchvision layout: `img_align_celeba/`, `list_eval_partition.txt`, and the other
-annotation files). Download it from the [CelebA page](https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html).
+CelebA goes in `data/celeba/`, or anywhere you point `--data-root`. Either the official download from the
+[CelebA page](https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html) or the
+[Kaggle copy](https://www.kaggle.com/datasets/jessicali9530/celeba-dataset), unzipped as is.
 Images are center-cropped to 178×178 and resized to 64×64. Evaluation uses the first 10,000 images of the official
 test split, which are never trained on. The pretrained decoder downloads from Hugging Face on first use.
 
